@@ -22,7 +22,7 @@ def fetch_recent_games(player_id: str, limit: int = 10) -> list:
         return []
 
 def save_game_batch(games: list) -> int:
-    """Batch inserts formatted game items into DynamoDB."""
+    # Batch inserts formatted games into DynamoDB
     written = 0
     with _table.batch_writer() as batch:
         for game in games:
