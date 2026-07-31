@@ -6,7 +6,7 @@ from db import _table
 def fetch_and_store_player(player_id, player_name):
     player_id = str(player_id)
     
-    # 1. Fetch Regular Season Games
+    # Fetch Regular Season Games
     gamelog_reg = playergamelog.PlayerGameLog(
         player_id=player_id, 
         season='2025-26', 
@@ -16,7 +16,7 @@ def fetch_and_store_player(player_id, player_name):
     if not df_reg.empty:
         df_reg['SeasonType'] = 'Regular Season'
 
-    # 2. Fetch Playoff Games
+    # Fetch Playoff Games
     gamelog_post = playergamelog.PlayerGameLog(
         player_id=player_id, 
         season='2025-26', 
@@ -32,7 +32,7 @@ def fetch_and_store_player(player_id, player_name):
     if df_combined.empty:
         return []
 
-    # Sort strictly by date descending (format='mixed' handles all date formats safely)
+    # Sort by descending date to get most recent games first
     df_combined['ParsedDate'] = pd.to_datetime(df_combined['GAME_DATE'], format='mixed')
     df_combined = df_combined.sort_values(by='ParsedDate', ascending=False)
 
