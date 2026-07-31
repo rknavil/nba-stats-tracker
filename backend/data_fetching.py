@@ -1,55 +1,84 @@
 from decimal import Decimal
+import pandas as pd
 from nba_api.stats.endpoints import playergamelog
-from db import save_game_batch
+from db import _table
 
-def calculate_ts_pct(pts: float, fga: float, fta: float) -> float:
-    # Calculates True Shooting Percentage
-    tsa = fga + (0.44 * fta)
-    if tsa == 0:
-        return 0.0
-    return round((pts / (2 * tsa)) * 100, 1)
+def fetch_and_store_player(player_id, player_name):
+    player_id = str(player_id)
+    
+    # 1. Fetch Regular Season Games
+    gamelog_reg = playergamelog.PlayerGameLog(
+        player_id=player_id, 
+        season='2025-26', 
+        season_type_all_star='Regular Season'
+    )
+    df_reg = gamelog_reg.get_data_frames()[0]
+    if not df_reg.empty:
+        df_reg['SeasonType'] = 'Regular Season'
 
-def fetch_and_store_player(player_id: str, player_name: str, season: str = '2025-26') -> int:
-    # Fetches regular season and playoff stats from nba_api and saves them to DynamoDB
-    season_types = ['Regular Season', 'Playoffs']
-    items_to_save = []
+    # 2. Fetch Playoff Games
+    gamelog_post = playergamelog.PlayerGameLog(
+        player_id=player_id, 
+        season='2025-26', 
+        season_type_all_star='Playoffs'
+    )
+    df_post = gamelog_post.get_data_frames()[0]
+    if not df_post.empty:
+        df_post['SeasonType'] = 'Playoffs'
 
-    for s_type in season_types:
-        try:
-            log = playergamelog.PlayerGameLog(
-                player_id=player_id, 
-                season=season, 
-                season_type_all_star=s_type
-            )
-            df = log.get_data_frames()[0]
-            if not df.empty:
-                for _, row in df.iterrows():
-                    pts = float(row['PTS'])
-                    fga = float(row['FGA'])
-                    fta = float(row['FTA'])
-                    ts_pct = calculate_ts_pct(pts, fga, fta)
+    # Combine both DataFrames
+    df_combined = pd.concat([df_post, df_reg], ignore_index=True)
+    
+    if df_combined.empty:
+        return []
 
-                    item = {
-                        'PlayerID': str(player_id),
-                        'GameDate': str(row['GAME_DATE']),
-                        'PlayerName': player_name,
-                        'Matchup': str(row['MATCHUP']),
-                        'WL': str(row['WL']),
-                        'SeasonType': s_type,
-                        'Minutes': str(row['MIN']),
-                        'Points': Decimal(str(row['PTS'])),
-                        'Rebounds': Decimal(str(row['REB'])),
-                        'Assists': Decimal(str(row['AST'])),
-                        'Steals': Decimal(str(row['STL'])),
-                        'Blocks': Decimal(str(row['BLK'])),
-                        'Turnovers': Decimal(str(row['TOV'])),
-                        'PlusMinus': Decimal(str(row['PLUS_MINUS'])),
-                        'TrueShootingPct': Decimal(str(ts_pct))
-                    }
-                    items_to_save.append(item)
-        except Exception as e:
-            print(f"Error fetching {s_type} for {player_name}: {e}")
+    # Sort strictly by date descending (format='mixed' handles all date formats safely)
+    df_combined['ParsedDate'] = pd.to_datetime(df_combined['GAME_DATE'], format='mixed')
+    df_combined = df_combined.sort_values(by='ParsedDate', ascending=False)
 
-    if items_to_save:
-        return save_game_batch(items_to_save)
-    return 0
+    games = []
+    # Take the 10 most recent games overall
+    for _, row in df_combined.head(10).iterrows():
+        fgm = float(row['FGM'])
+        fga = float(row['FGA'])
+        ftm = float(row['FTM'])
+        fta = float(row['FTA'])
+        pts = float(row['PTS'])
+        
+        # Calculate True Shooting Percentage
+        ts_denom = 2 * (fga + 0.44 * fta)
+        ts_pct = round((pts / ts_denom) * 100, 1) if ts_denom > 0 else 0.0
+
+        fg_pct = round(float(row['FG_PCT']) * 100, 1) if row['FG_PCT'] is not None else 0.0
+        fg3_pct = round(float(row['FG3_PCT']) * 100, 1) if row['FG3_PCT'] is not None else 0.0
+
+        game_data = {
+            'PlayerID': str(player_id),
+            'PlayerName': str(player_name),
+            'GameDate': str(row['GAME_DATE']),
+            'Matchup': str(row['MATCHUP']),
+            'WL': str(row['WL']),
+            'SeasonType': str(row['SeasonType']),
+            'Points': int(pts),
+            'Rebounds': int(row['REB']),
+            'Assists': int(row['AST']),
+            'TrueShootingPct': Decimal(str(ts_pct)),
+            'FGM': int(fgm),
+            'FGA': int(fga),
+            'FG_PCT': Decimal(str(fg_pct)),
+            'FG3M': int(row['FG3M']),
+            'FG3A': int(row['FG3A']),
+            'FG3_PCT': Decimal(str(fg3_pct)),
+            'FTM': int(ftm),
+            'FTA': int(fta),
+            'Minutes': int(row['MIN']),
+            'Steals': int(row['STL']),
+            'Blocks': int(row['BLK']),
+            'Turnovers': int(row['TOV'])
+        }
+
+        # Put item into DynamoDB
+        _table.put_item(Item=game_data)
+        games.append(game_data)
+        
+    return games
