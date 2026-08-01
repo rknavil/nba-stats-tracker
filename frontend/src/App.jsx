@@ -45,7 +45,7 @@ function App() {
     setDataSource('');
     
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/stats/${encodeURIComponent(playerQuery)}`);
+      const res = await fetch(`http://127.0.0.1:5001/api/stats/${encodeURIComponent(playerQuery)}`);
       const result = await res.json();
       
       if (result.status === 'success') {
