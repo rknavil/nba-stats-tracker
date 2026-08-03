@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 
+// Creating a reusable stat block for player cards
 const StatItem = ({ label, value, primary, highlight }) => (
   <div style={{
     display: 'flex',
@@ -31,7 +32,13 @@ const StatItem = ({ label, value, primary, highlight }) => (
 );
 
 function App() {
+  // default stats show LeBron James
   const [searchTerm, setSearchTerm] = useState('LeBron James');
+  
+  const [limit, setLimit] = useState(10);
+  const [seasonType, setSeasonType] = useState('Both');
+  const [season, setSeason] = useState('2025-26');
+
   const [games, setGames] = useState([]);
   const [dataSource, setDataSource] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,7 +52,14 @@ function App() {
     setDataSource('');
     
     try {
-      const res = await fetch(`http://127.0.0.1:5001/api/stats/${encodeURIComponent(playerQuery)}`);
+      const queryParams = new URLSearchParams({
+        limit: limit,
+        season_type: seasonType,
+        season: season
+      });
+
+      // running on port 5001
+      const res = await fetch(`http://127.0.0.1:5001/api/stats/${encodeURIComponent(playerQuery)}?${queryParams.toString()}`);
       const result = await res.json();
       
       if (result.status === 'success') {
@@ -56,7 +70,7 @@ function App() {
       }
     } catch (err) {
       console.error(err);
-      setError('Unable to connect to Flask server. Ensure app.py is running.');
+      setError('Unable to connect to Flask server. Ensure app.py is running on port 5001.');
     } finally {
       setLoading(false);
     }
@@ -66,19 +80,19 @@ function App() {
     fetchStats(searchTerm);
   }, []);
 
-  // Handler for form submission (Triggers on Enter key or button click)
+  // enter or search button functionality
   const handleSearch = (e) => {
     e.preventDefault();
     fetchStats(searchTerm);
   };
 
-  // Sort games by most recent date
+  // game cards are from newest to oldest
   const sortedGames = useMemo(() => {
     if (!Array.isArray(games)) return [];
     return [...games].sort((a, b) => {
       const dateA = new Date(a.GameDate).getTime();
       const dateB = new Date(b.GameDate).getTime();
-      return dateB - dateA; // Descending order (newest first)
+      return dateB - dateA;
     });
   }, [games]);
 
@@ -94,28 +108,86 @@ function App() {
           NBA Player Stat Tracker
         </h1>
         <p style={{ color: '#94a3b8', fontSize: '0.95rem', margin: 0 }}>
-          Recent Game Box Scores & Shooting Stats (2025-26 Season)
+          Recent Game Box Scores & Shooting Stats
         </p>
       </header>
 
-      {/* Search Bar wrapped in a <form> to handle Enter key presses */}
-      <form onSubmit={handleSearch} style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '2rem' }}>
+      {/* Main Search & Filter Bar (wraps gracefully on mobile/smaller screens) */}
+      <form onSubmit={handleSearch} style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '2rem', flexWrap: 'wrap' }}>
         <input 
           type="text" 
           value={searchTerm} 
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Enter player name..." 
+          placeholder="Enter player name or nickname..." 
           style={{ 
             padding: '0.75rem 1rem', 
             fontSize: '0.95rem', 
             borderRadius: '6px', 
             border: '1px solid #334155',
-            width: '300px',
+            width: '260px',
             backgroundColor: '#0f172a',
             color: '#fff',
             outline: 'none'
           }}
         />
+
+        {/* Season year selector */}
+        <select 
+          value={season} 
+          onChange={(e) => setSeason(e.target.value)}
+          style={{
+            padding: '0.75rem 1rem',
+            fontSize: '0.95rem',
+            borderRadius: '6px',
+            border: '1px solid #334155',
+            backgroundColor: '#0f172a',
+            color: '#fff',
+            outline: 'none',
+            cursor: 'pointer'
+          }}>
+          <option value="2025-26">2025-26 Season</option>
+          <option value="2024-25">2024-25 Season</option>
+          <option value="2023-24">2023-24 Season</option>
+        </select>
+
+        {/* Regular season vs playoffs filter option */}
+        <select 
+          value={seasonType} 
+          onChange={(e) => setSeasonType(e.target.value)}
+          style={{
+            padding: '0.75rem 1rem',
+            fontSize: '0.95rem',
+            borderRadius: '6px',
+            border: '1px solid #334155',
+            backgroundColor: '#0f172a',
+            color: '#fff',
+            outline: 'none',
+            cursor: 'pointer'
+          }}>
+          <option value="Both">All Games (Reg + Post)</option>
+          <option value="Regular Season">Regular Season Only</option>
+          <option value="Playoffs">Playoffs Only</option>
+        </select>
+
+        {/* Game count cutoff */}
+        <select 
+          value={limit} 
+          onChange={(e) => setLimit(Number(e.target.value))}
+          style={{
+            padding: '0.75rem 1rem',
+            fontSize: '0.95rem',
+            borderRadius: '6px',
+            border: '1px solid #334155',
+            backgroundColor: '#0f172a',
+            color: '#fff',
+            outline: 'none',
+            cursor: 'pointer'
+          }}>
+          <option value={5}>Last 5 Games</option>
+          <option value={10}>Last 10 Games</option>
+          <option value={20}>Last 20 Games</option>
+        </select>
+
         <button 
           type="submit" 
           disabled={loading} 
@@ -133,7 +205,7 @@ function App() {
         </button>
       </form>
 
-      {/* Data Badge */}
+      {/* Shows if requested player stats are in DynamoDB database */}
       {dataSource && !loading && !error && (
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <span style={{ 
@@ -151,13 +223,13 @@ function App() {
         </div>
       )}
 
+      {/* Error state banner */}
       {error && (
         <div style={{ color: '#f87171', textAlign: 'center', marginBottom: '2rem', padding: '0.75rem', backgroundColor: '#450a0a', borderRadius: '6px', fontSize: '0.9rem' }}>
           {error}
         </div>
       )}
 
-      {/* Game Cards Grid */}
       {Array.isArray(sortedGames) && sortedGames.length > 0 ? (
         <div style={{ 
           display: 'grid', 
@@ -174,7 +246,7 @@ function App() {
               flexDirection: 'column',
               gap: '1rem'
             }}>
-              {/* Header */}
+              {/* Card header showing matchup, date, etc. */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
                 <div>
                   <div style={{ fontWeight: '700', fontSize: '1rem', color: '#0f172a' }}>
@@ -203,7 +275,7 @@ function App() {
                 </div>
               </div>
 
-              {/* Top Stat Row: PTS -> REB -> AST -> TS% (Far Right) */}
+              {/* Row that shows points, rebounds, assists, and TS% */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
                 <StatItem label="PTS" value={g.Points ?? '-'} primary />
                 <StatItem label="REB" value={g.Rebounds ?? '-'} primary />
@@ -211,7 +283,7 @@ function App() {
                 <StatItem label="TS%" value={g.TrueShootingPct ? `${g.TrueShootingPct}%` : '-'} primary highlight />
               </div>
 
-              {/* Detailed Box Score with Fallback values */}
+              {/* Detailed box score breakdown with fallbacks in case of missing return values */}
               <div style={{ 
                 padding: '0.75rem', 
                 backgroundColor: '#f8fafc', 

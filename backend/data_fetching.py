@@ -3,31 +3,38 @@ import pandas as pd
 from nba_api.stats.endpoints import playergamelog
 from db import _table
 
-def fetch_and_store_player(player_id, player_name):
+def fetch_and_store_player(player_id, player_name, season='2025-26', season_type='Both', limit=10):
     player_id = str(player_id)
     
-    # Fetch Regular Season Games
-    gamelog_reg = playergamelog.PlayerGameLog(
-        player_id=player_id, 
-        season='2025-26', 
-        season_type_all_star='Regular Season'
-    )
-    df_reg = gamelog_reg.get_data_frames()[0]
-    if not df_reg.empty:
-        df_reg['SeasonType'] = 'Regular Season'
+    # Store fetched DataFrames for processing
+    gamelogs = []
 
-    # Fetch Playoff Games
-    gamelog_post = playergamelog.PlayerGameLog(
-        player_id=player_id, 
-        season='2025-26', 
-        season_type_all_star='Playoffs'
-    )
-    df_post = gamelog_post.get_data_frames()[0]
-    if not df_post.empty:
-        df_post['SeasonType'] = 'Playoffs'
+    # Determine which season types to query based on requested filter
+    types_to_fetch = []
+    if season_type in ['Regular Season', 'Both']:
+        types_to_fetch.append('Regular Season')
+    if season_type in ['Playoffs', 'Both']:
+        types_to_fetch.append('Playoffs')
 
-    # Combine both DataFrames
-    df_combined = pd.concat([df_post, df_reg], ignore_index=True)
+    # Fetch gamelogs dynamically for requested season types
+    for s_type in types_to_fetch:
+        # Fetch Games based on target season and season type
+        gamelog = playergamelog.PlayerGameLog(
+            player_id=player_id, 
+            season=season, 
+            season_type_all_star=s_type
+        )
+        df = gamelog.get_data_frames()[0]
+        if not df.empty:
+            df['SeasonType'] = s_type
+            gamelogs.append(df)
+
+    # Return empty list if no games were found for any requested type
+    if not gamelogs:
+        return []
+
+    # Combine all fetched DataFrames into one dataset
+    df_combined = pd.concat(gamelogs, ignore_index=True)
     
     if df_combined.empty:
         return []
@@ -37,8 +44,8 @@ def fetch_and_store_player(player_id, player_name):
     df_combined = df_combined.sort_values(by='ParsedDate', ascending=False)
 
     games = []
-    # Take the 10 most recent games overall
-    for _, row in df_combined.head(10).iterrows():
+    # Take the requested limit of most recent games overall
+    for _, row in df_combined.head(limit).iterrows():
         fgm = float(row['FGM'])
         fga = float(row['FGA'])
         ftm = float(row['FTM'])
@@ -55,6 +62,7 @@ def fetch_and_store_player(player_id, player_name):
         game_data = {
             'PlayerID': str(player_id),
             'PlayerName': str(player_name),
+            'Season': str(season), # Store Season year to allow season-specific cache querying
             'GameDate': str(row['GAME_DATE']),
             'Matchup': str(row['MATCHUP']),
             'WL': str(row['WL']),

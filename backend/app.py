@@ -1,5 +1,5 @@
 import difflib
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from decimal import Decimal
 from nba_api.stats.static import players
@@ -65,6 +65,11 @@ def find_best_player_match(query_name):
 @app.route('/api/stats/<player_name>', methods=['GET'])
 def get_player_stats(player_name):
     try:
+        # Extract filter query parameters from frontend request
+        limit = request.args.get('limit', default=10, type=int)
+        season_type = request.args.get('season_type', default='Both', type=str)
+        season = request.args.get('season', default='2025-26', type=str)
+
         # Find player using direct + fuzzy matching
         player = find_best_player_match(player_name)
         
@@ -74,9 +79,16 @@ def get_player_stats(player_name):
         player_id = str(player['id'])
         player_full_name = player['full_name']
         
-        # Check DynamoDB first to see if player's recent games are cached
-        cached_games = fetch_recent_games(player_id, limit=10)
-        if cached_games:
+        # Check DynamoDB using player ID, season, season type, and limit filters
+        cached_games = fetch_recent_games(
+            player_id, 
+            season=season, 
+            season_type=season_type, 
+            limit=limit
+        )
+
+        # Cache Hit: Only return cache if we have at least the requested number of games
+        if cached_games and len(cached_games) >= limit:
             return jsonify({
                 'status': 'success',
                 'source': 'dynamodb_cache',
@@ -84,8 +96,14 @@ def get_player_stats(player_name):
                 'data': convert_decimals(cached_games)
             }), 200
 
-        # If missing from DynamoDB, fetch from NBA API & store
-        new_games = fetch_and_store_player(player_id, player_full_name)
+        # Cache Miss: Fetch missing/extended dataset directly from NBA API & store in DynamoDB
+        new_games = fetch_and_store_player(
+            player_id, 
+            player_full_name, 
+            season=season, 
+            season_type=season_type, 
+            limit=limit
+        )
         
         return jsonify({
             'status': 'success',
