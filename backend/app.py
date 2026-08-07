@@ -65,7 +65,7 @@ def find_best_player_match(query_name):
 @app.route('/api/stats/<player_name>', methods=['GET'])
 def get_player_stats(player_name):
     try:
-        # Extract filter query parameters from frontend request
+        # Defining query parameters
         limit = request.args.get('limit', default=10, type=int)
         season_type = request.args.get('season_type', default='Both', type=str)
         season = request.args.get('season', default='2025-26', type=str)
@@ -79,7 +79,7 @@ def get_player_stats(player_name):
         player_id = str(player['id'])
         player_full_name = player['full_name']
         
-        # Check DynamoDB using player ID, season, season type, and limit filters
+        # Check DynamoDB using player ID, season and season type
         cached_games = fetch_recent_games(
             player_id, 
             season=season, 
@@ -87,7 +87,7 @@ def get_player_stats(player_name):
             limit=limit
         )
 
-        # Cache Hit: Only return cache if we have at least the requested number of games
+        # Only return cached results if they meet the requested limit
         if cached_games and len(cached_games) >= limit:
             return jsonify({
                 'status': 'success',
@@ -96,7 +96,7 @@ def get_player_stats(player_name):
                 'data': convert_decimals(cached_games)
             }), 200
 
-        # Cache Miss: Fetch missing/extended dataset directly from NBA API & store in DynamoDB
+        # Fetch from NBA API and store in DynamoDB if cache doesn't meet requested games
         new_games = fetch_and_store_player(
             player_id, 
             player_full_name, 

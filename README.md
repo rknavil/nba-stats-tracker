@@ -72,9 +72,9 @@ nba-stats-tracker/
          │                     [ Cache Hit ]                                       [ Cache Miss ]
          │                             │                                                  │
          │                             ▼                                                  ▼
-         │                   Return Cached Games                                  Fetch from nba_api
+         │                Return Cached Games from DynamoDB                         Fetch from nba_api
          │                             │                                                  │
-         │                             │                                        Compute TS% & Splits
+         │                             │                                        Compute TS% & Shooting Splits
          │                             │                                                  │
          │                             │                                        Write to DynamoDB
          │                             │                                                  │
